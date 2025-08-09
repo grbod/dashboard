@@ -34,29 +34,31 @@ class AirtableService:
             self.api = None
             self.table = None
     
-    def get_current_week_range(self) -> tuple:
-        """Get the start and end dates of the current week (Monday to Sunday)."""
+    def get_two_week_range(self) -> tuple:
+        """Get the start and end dates for current week and previous week (2 weeks total)."""
         today = datetime.now().date()
         # Find Monday of this week
-        monday = today - timedelta(days=today.weekday())
+        monday_this_week = today - timedelta(days=today.weekday())
+        # Find Monday of previous week
+        monday_last_week = monday_this_week - timedelta(days=7)
         # Find Sunday of this week
-        sunday = monday + timedelta(days=6)
-        return monday, sunday
+        sunday_this_week = monday_this_week + timedelta(days=6)
+        return monday_last_week, sunday_this_week
     
     @st.cache_data(ttl=900)  # Cache for 15 minutes
     def fetch_upcoming_pickups(_self) -> Optional[List[Dict]]:
         """
         Fetch upcoming pickups from Airtable with the following criteria:
         - Status in ['Sent PO', 'PO Confirmed', 'Ready for Pickup!', 'Pickup Scheduled']
-        - Vendor Ready-Date is within the current week
+        - Vendor Ready-Date is within the current week or previous week (2 weeks total)
         """
         if not _self.table:
             _self.logger.error("Airtable table not initialized")
             return None
         
         try:
-            # Get current week range
-            monday, sunday = _self.get_current_week_range()
+            # Get two week range (previous week + current week)
+            start_date, end_date = _self.get_two_week_range()
             
             # Build the Airtable formula for filtering
             # Status filter
@@ -68,9 +70,9 @@ class AirtableService:
             ]
             status_formula = f"OR({','.join(status_conditions)})"
             
-            # Date filter - Vendor Ready-Date within current week
+            # Date filter - Vendor Ready-Date within the two week period
             # Using ISO date format for comparison
-            date_formula = f"AND(IS_AFTER({{Vendor Ready-Date}}, '{monday.isoformat()}'), IS_BEFORE({{Vendor Ready-Date}}, DATEADD('{sunday.isoformat()}', 1, 'days')))"
+            date_formula = f"AND(IS_AFTER({{Vendor Ready-Date}}, '{start_date.isoformat()}'), IS_BEFORE({{Vendor Ready-Date}}, DATEADD('{end_date.isoformat()}', 1, 'days')))"
             
             # Combine conditions
             formula = f"AND({status_formula}, {date_formula})"
@@ -98,20 +100,13 @@ class AirtableService:
             try:
                 fields = record.get('fields', {})
                 
-                # Extract relevant fields with safe defaults
+                # Extract only the requested fields - using correct Airtable column names
                 processed_record = {
-                    'Record ID': record.get('id', 'N/A'),
-                    'Vendor': fields.get('Vendor', 'N/A'),
-                    'PO Number': fields.get('PO Number', fields.get('PO #', 'N/A')),
+                    'Name': fields.get('Name', 'N/A'),  # Product item code
+                    'Supplier': fields.get('Supplier', 'N/A'),
+                    'Notes/PO': fields.get('Notes/PO', 'N/A'),
                     'Status': fields.get('Status', 'N/A'),
                     'Vendor Ready-Date': fields.get('Vendor Ready-Date', 'N/A'),
-                    'Product': fields.get('Product', fields.get('Description', 'N/A')),
-                    'Quantity': fields.get('Quantity', 'N/A'),
-                    'Unit Cost': fields.get('Unit Cost', 0),
-                    'Total Cost': fields.get('Total Cost', fields.get('Total', 0)),
-                    'Carrier': fields.get('Carrier', 'N/A'),
-                    'Tracking': fields.get('Tracking', fields.get('Tracking Number', 'N/A')),
-                    'Notes': fields.get('Notes', ''),
                 }
                 
                 # Format date if available
@@ -122,17 +117,6 @@ class AirtableService:
                         processed_record['_ready_date_raw'] = fields.get('Vendor Ready-Date')  # Keep raw for sorting
                     except:
                         pass
-                
-                # Format currency fields
-                if isinstance(processed_record['Unit Cost'], (int, float)) and processed_record['Unit Cost'] > 0:
-                    processed_record['Unit Cost'] = f"${processed_record['Unit Cost']:,.2f}"
-                else:
-                    processed_record['Unit Cost'] = 'N/A'
-                
-                if isinstance(processed_record['Total Cost'], (int, float)) and processed_record['Total Cost'] > 0:
-                    processed_record['Total Cost'] = f"${processed_record['Total Cost']:,.2f}"
-                else:
-                    processed_record['Total Cost'] = 'N/A'
                 
                 processed_data.append(processed_record)
                 

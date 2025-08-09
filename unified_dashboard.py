@@ -370,12 +370,12 @@ def create_upcoming_pickups_column(data: dict, summary: dict):
     ">
         <div style="display: flex; align-items: center; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #7c9885;">
             <span style="font-size: 1.5rem; margin-right: 0.5rem;">📅</span>
-            <span style="font-size: 1.1rem; font-weight: 600; color: #033f63;">Upcoming Pickups This Week</span>
+            <span style="font-size: 1.1rem; font-weight: 600; color: #033f63;">Upcoming Pickups</span>
             <span style="margin-left: auto; font-size: 0.9rem;">{status_icon}</span>
         </div>
         <div style="padding-left: 0.5rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <span style="color: #28666e; font-weight: 500; font-size: 0.95rem;">Total Pickups:</span>
+                <span style="color: #28666e; font-weight: 500; font-size: 0.95rem;">Total to Schedule:</span>
                 <span style="font-weight: 700; color: #033f63; font-size: 2.2rem;">{upcoming_pickups}</span>
             </div>
         </div>
@@ -396,18 +396,47 @@ def create_upcoming_pickups_column(data: dict, summary: dict):
             else:
                 color = "#28666e"  # Default ming
             
+            # Add more contrast for better visibility with semi-transparent backgrounds
+            if status_name == 'Pickup Scheduled':
+                bg_color = "rgba(232, 245, 233, 0.7)"  # Light green at 70% opacity
+                text_color = "#1b5e20"  # Dark green text for strong contrast
+                count_color = "#2e7d32"  # Medium green for numbers
+                border_color = "#4caf50"  # Bright green border
+            elif status_name == 'Sent PO':
+                bg_color = "rgba(227, 242, 253, 0.7)"  # Light blue at 70% opacity
+                text_color = "#0d47a1"  # Dark blue text for strong contrast
+                count_color = "#1565c0"  # Medium blue for numbers
+                border_color = "#2196f3"  # Bright blue border
+            elif status_name == 'PO Confirmed':
+                bg_color = "rgba(255, 249, 196, 0.7)"  # Light yellow at 70% opacity
+                text_color = "#f57f17"  # Dark amber text
+                count_color = "#ff6f00"  # Orange for numbers
+                border_color = "#ffc107"  # Amber border
+            elif status_name == 'Ready for Pickup!':
+                bg_color = "rgba(243, 229, 245, 0.7)"  # Light purple at 70% opacity
+                text_color = "#4a148c"  # Dark purple text
+                count_color = "#6a1b9a"  # Medium purple for numbers
+                border_color = "#9c27b0"  # Purple border
+            else:
+                bg_color = "rgba(124, 152, 133, 0.1)"  # Default subtle background
+                text_color = color
+                count_color = "#033f63"
+                border_color = color
+            
             st.markdown(f"""
             <div style="
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 0.3rem 0.5rem;
-                margin-bottom: 0.3rem;
-                background: rgba(124, 152, 133, 0.05);
-                border-radius: 4px;
+                padding: 0.4rem 0.6rem;
+                margin-bottom: 0.4rem;
+                background: {bg_color};
+                border-radius: 6px;
+                border-left: 4px solid {border_color};
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             ">
-                <span style="color: {color}; font-size: 0.85rem;">{status_name}:</span>
-                <span style="font-weight: 600; color: #033f63;">{count}</span>
+                <span style="color: {text_color}; font-size: 0.9rem; font-weight: 600;">{status_name}:</span>
+                <span style="font-weight: 700; color: {count_color}; font-size: 1rem;">{count}</span>
             </div>
             """, unsafe_allow_html=True)
     elif upcoming_pickups == 0:
@@ -593,7 +622,9 @@ def create_data_table(df: pd.DataFrame, title: str, service_type: str):
             # Format currency columns
             for col in display_df.columns:
                 if 'Cost' in col or 'Price' in col or 'Total' in col or 'Value' in col:
-                    display_df[col] = display_df[col].apply(lambda x: f"${x:,.2f}" if pd.notna(x) and x != 0 else "N/A")
+                    display_df[col] = display_df[col].apply(
+                        lambda x: x if isinstance(x, str) else (f"${x:,.2f}" if pd.notna(x) and x != 0 else "N/A")
+                    )
             
             st.dataframe(display_df, use_container_width=True, height=400)
         
@@ -623,7 +654,6 @@ def main():
     st.markdown("""
     <div class="main-header">
         <h1 style="margin: 0; font-size: 2rem; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);">🚢 Unified Shipping Dashboard</h1>
-        <p style="margin: 0.5rem 0 0 0; opacity: 0.95; font-size: 1rem; color: #fedc97;">FreightView + ShipStation Integration</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -672,7 +702,7 @@ def main():
     )
     
     if should_refresh:
-        with st.spinner("🔄 Loading data from both services..."):
+        with st.spinner("🔄 Loading data from all services..."):
             try:
                 all_data = unified_service.fetch_all_data()
                 summary = unified_service.get_unified_summary(all_data)
@@ -683,7 +713,7 @@ def main():
                 st.session_state.last_update = datetime.now()
                 st.session_state.data_loaded = True
                 
-                st.success("✅ Data loaded from both services!")
+                st.success("✅ Data loaded from all services!")
                 time.sleep(1)
                 st.rerun()
                 
@@ -804,13 +834,13 @@ def main():
                             del display_pickup['_ready_date_raw']
                         display_pickups.append(display_pickup)
                     
-                    create_data_table(pd.DataFrame(display_pickups), "Upcoming Pickups This Week", "airtable")
+                    create_data_table(pd.DataFrame(display_pickups), "Upcoming Pickups", "airtable")
             else:
                 with tab5:
                     st.info("📅 No upcoming pickups scheduled for this week")
     
     else:
-        st.info("👆 Click 'Refresh All Data' to load shipping data from both services")
+        st.info("👆 Click 'Refresh All Data' to load shipping data from all services")
     
     # Auto-refresh logic
     if st.session_state.auto_refresh_enabled and st.session_state.data_loaded:

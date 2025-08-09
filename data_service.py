@@ -121,7 +121,6 @@ class FreightDataService:
                         pass
                     
                     table_data.append({
-                        "Shipment ID": shipment.shipmentId,
                         "Consignee": consignee,
                         "PO Number": po_number,
                         "Delivery Est": delivery_est,
@@ -196,7 +195,6 @@ class FreightDataService:
                         pass
                     
                     table_data.append({
-                        "Shipment ID": shipment.shipmentId,
                         "Consignor": consignor,
                         "Inv Number": inv_number,
                         "Delivery Est": delivery_est,
