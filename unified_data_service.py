@@ -15,6 +15,7 @@ import streamlit as st
 from data_service import FreightDataService
 from shipstation_models import ShipStationOrdersResponse, ShipStationShipmentsResponse
 from freightviewslack.pydatamodel import Model
+from airtable_service import AirtableService
 
 # Load environment variables
 try:
@@ -117,15 +118,22 @@ class ShipStationService:
             return None
 
 class UnifiedDataService:
-    """Unified service for both FreightView and ShipStation data."""
+    """Unified service for FreightView, ShipStation, and Airtable data."""
     
-    def __init__(self, fv_client_id: str, fv_client_secret: str, ss_api_key: str, ss_api_secret: str):
+    def __init__(self, fv_client_id: str, fv_client_secret: str, ss_api_key: str, ss_api_secret: str,
+                 at_api_key: Optional[str] = None, at_base_id: Optional[str] = None, at_table_name: Optional[str] = None):
         self.freight_service = FreightDataService(fv_client_id, fv_client_secret)
         self.shipstation_service = ShipStationService(ss_api_key, ss_api_secret)
+        
+        # Initialize Airtable service if credentials provided
+        self.airtable_service = None
+        if at_api_key and at_base_id and at_table_name:
+            self.airtable_service = AirtableService(at_api_key, at_base_id, at_table_name)
+        
         self.logger = logging.getLogger(__name__)
     
     def fetch_all_data(self) -> Dict:
-        """Fetch data from both services."""
+        """Fetch data from all services."""
         data = {
             "freightview": {
                 "shipments": None,
@@ -135,6 +143,10 @@ class UnifiedDataService:
                 "orders": None,
                 "shipments": None,
                 "stores": None,
+                "error": None
+            },
+            "airtable": {
+                "upcoming_pickups": None,
                 "error": None
             }
         }
@@ -159,12 +171,45 @@ class UnifiedDataService:
             data["shipstation"]["error"] = str(e)
             self.logger.error(f"ShipStation fetch error: {e}")
         
+        # Fetch Airtable data
+        if self.airtable_service:
+            try:
+                upcoming_pickups = self.airtable_service.fetch_upcoming_pickups()
+                data["airtable"]["upcoming_pickups"] = upcoming_pickups
+            except Exception as e:
+                data["airtable"]["error"] = str(e)
+                self.logger.error(f"Airtable fetch error: {e}")
+        
         return data
     
-    def process_shipstation_orders(self, orders_response: ShipStationOrdersResponse) -> List[Dict]:
+    def process_shipstation_orders(self, orders_response: ShipStationOrdersResponse, stores_data: Optional[dict] = None) -> List[Dict]:
         """Process ShipStation orders for display."""
         if not orders_response or not orders_response.orders:
             return []
+        
+        # Store name abbreviation dictionary
+        STORE_ABBREVIATIONS = {
+            'Bala': 'Bala',
+            'Body Nutrition - Wholesale': 'Wholesale',
+            'Gym Molly Store': 'Gym Molly',
+            'MWL Buyside Store': 'MWL',
+            'Manual Orders': 'Manual',
+            'MediWeight OLD Orders': 'MWL OLD',
+            'New Amazon Store': 'Amazon',
+            'Rate Browser': 'Unused',
+            'Shopify Store': 'Shopify',
+            'TestRateShopping': 'TEST'
+        }
+        
+        # Build store ID to name mapping from stores API
+        store_id_to_name = {}
+        if stores_data:
+            for store in stores_data:
+                if isinstance(store, dict):
+                    store_id = store.get('storeId')
+                    store_name = store.get('storeName')
+                    if store_id and store_name:
+                        store_id_to_name[str(store_id)] = store_name
         
         processed_orders = []
         
@@ -172,6 +217,24 @@ class UnifiedDataService:
             try:
                 # Calculate total items
                 total_items = sum(item.quantity or 0 for item in order.items) if order.items else 0
+                
+                # Get store information
+                store_name = "Unknown Store"
+                store_id = None
+                
+                # Check advancedOptions for store ID
+                if order.advancedOptions:
+                    store_id = order.advancedOptions.get('storeId')
+                
+                # Get the store name from our mapping
+                if store_id and str(store_id) in store_id_to_name:
+                    store_name = store_id_to_name[str(store_id)]
+                elif store_id:
+                    store_name = f"Store {store_id}"
+                
+                # Clean up and apply abbreviation
+                store_name = str(store_name).strip()
+                store_name = STORE_ABBREVIATIONS.get(store_name, store_name)
                 
                 # Process weight - convert to oz/lbs display
                 weight_display = "N/A"
@@ -219,6 +282,7 @@ class UnifiedDataService:
                 
                 processed_orders.append({
                     "Order ID": order.orderNumber,
+                    "Store": store_name,  # Add store column
                     "Status": order.orderStatus,
                     "Customer": order.customerEmail or "N/A",
                     "Ship To": f"{ship_to_company} ({ship_to_city})",
@@ -282,6 +346,13 @@ class UnifiedDataService:
         
         return processed_shipments
     
+    def process_airtable_pickups(self, pickups_data: Optional[List]) -> List[Dict]:
+        """Process Airtable upcoming pickups for display."""
+        if not pickups_data or not self.airtable_service:
+            return []
+        
+        return self.airtable_service.process_pickup_data(pickups_data)
+    
     def get_unified_summary(self, all_data: Dict) -> Dict:
         """Calculate unified summary metrics."""
         summary = {
@@ -296,6 +367,11 @@ class UnifiedDataService:
                 "shipped_orders": 0,
                 "total_order_value": 0,
                 "avg_order_value": 0,
+                "status": "disconnected"
+            },
+            "airtable": {
+                "upcoming_pickups": 0,
+                "total_pickup_value": 0,
                 "status": "disconnected"
             },
             "combined": {
@@ -319,7 +395,7 @@ class UnifiedDataService:
         
         # Process ShipStation data
         if all_data["shipstation"]["orders"] and not all_data["shipstation"]["error"]:
-            ss_orders = self.process_shipstation_orders(all_data["shipstation"]["orders"])
+            ss_orders = self.process_shipstation_orders(all_data["shipstation"]["orders"], all_data["shipstation"]["stores"])
             ss_shipped = self.process_shipstation_shipments(all_data["shipstation"]["shipments"]) if all_data["shipstation"]["shipments"] else []
             
             pending_orders = len(ss_orders)
@@ -335,14 +411,27 @@ class UnifiedDataService:
                 "status": "connected"
             }
         
+        # Process Airtable data
+        if all_data["airtable"]["upcoming_pickups"] and not all_data["airtable"]["error"]:
+            pickups_summary = self.airtable_service.get_pickup_summary(all_data["airtable"]["upcoming_pickups"]) if self.airtable_service else {}
+            
+            summary["airtable"] = {
+                "upcoming_pickups": pickups_summary.get("total_pickups", 0),
+                "total_pickup_value": pickups_summary.get("total_value", 0),
+                "by_status": pickups_summary.get("by_status", {}),
+                "status": "connected"
+            }
+        
         # Combined metrics
         summary["combined"]["total_active_shipments"] = (
             summary["freightview"]["total_shipments"] + 
-            summary["shipstation"]["pending_orders"]
+            summary["shipstation"]["pending_orders"] +
+            summary["airtable"]["upcoming_pickups"]
         )
         summary["combined"]["total_value"] = (
             summary["freightview"]["total_cost"] + 
-            summary["shipstation"]["total_order_value"]
+            summary["shipstation"]["total_order_value"] +
+            summary["airtable"]["total_pickup_value"]
         )
         
         return summary

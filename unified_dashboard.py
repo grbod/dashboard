@@ -148,6 +148,11 @@ def get_config():
         ss_api_key = os.getenv('SS_CLIENT_ID')
         ss_api_secret = os.getenv('SS_CLIENT_SECRET')
         
+        # Airtable credentials
+        at_api_key = os.getenv('AIRTABLE_API_KEY')
+        at_base_id = os.getenv('AIRTABLE_BASE_ID')
+        at_table_name = os.getenv('AIRTABLE_TABLE_NAME')
+        
         # Fallback to config file for FreightView
         if not fv_client_id or not fv_client_secret:
             try:
@@ -168,7 +173,8 @@ def get_config():
             st.error(f"⚠️ Missing configuration: {', '.join(missing)}")
             st.stop()
         
-        return fv_client_id, fv_client_secret, ss_api_key, ss_api_secret
+        # Return all credentials (Airtable ones may be None)
+        return fv_client_id, fv_client_secret, ss_api_key, ss_api_secret, at_api_key, at_base_id, at_table_name
         
     except Exception as e:
         st.error(f"Configuration error: {str(e)}")
@@ -341,6 +347,76 @@ def create_shipstation_column(data: dict, summary: dict):
         </div>
         """, unsafe_allow_html=True)
 
+def create_upcoming_pickups_column(data: dict, summary: dict):
+    """Create Upcoming Pickups This Week information column."""
+    status = summary["airtable"]["status"]
+    status_icon = "✅" if status == "connected" else "⚠️"
+    
+    # Get pickup count
+    upcoming_pickups = summary["airtable"].get("upcoming_pickups", 0)
+    
+    # Get status breakdown
+    by_status = summary["airtable"].get("by_status", {})
+    
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(to bottom right, #f5f7f3, #e8ede5);
+        border: 1.5px solid #7c9885;
+        border-left: 4px solid #7c9885;
+        border-radius: 12px;
+        padding: 1.2rem;
+        height: 100%;
+        box-shadow: 0 2px 8px rgba(124, 152, 133, 0.12);
+    ">
+        <div style="display: flex; align-items: center; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #7c9885;">
+            <span style="font-size: 1.5rem; margin-right: 0.5rem;">📅</span>
+            <span style="font-size: 1.1rem; font-weight: 600; color: #033f63;">Upcoming Pickups This Week</span>
+            <span style="margin-left: auto; font-size: 0.9rem;">{status_icon}</span>
+        </div>
+        <div style="padding-left: 0.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <span style="color: #28666e; font-weight: 500; font-size: 0.95rem;">Total Pickups:</span>
+                <span style="font-weight: 700; color: #033f63; font-size: 2.2rem;">{upcoming_pickups}</span>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Add status breakdown if there are pickups
+    if by_status and upcoming_pickups > 0:
+        st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
+        
+        # Show status breakdown
+        for status_name, count in sorted(by_status.items(), key=lambda x: x[1], reverse=True):
+            # Determine color based on status
+            if status_name in ['Ready for Pickup!', 'Pickup Scheduled']:
+                color = "#7c9885"  # Green/sage for ready
+            elif status_name == 'PO Confirmed':
+                color = "#b5b682"  # Yellow-green for confirmed
+            else:
+                color = "#28666e"  # Default ming
+            
+            st.markdown(f"""
+            <div style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0.3rem 0.5rem;
+                margin-bottom: 0.3rem;
+                background: rgba(124, 152, 133, 0.05);
+                border-radius: 4px;
+            ">
+                <span style="color: {color}; font-size: 0.85rem;">{status_name}:</span>
+                <span style="font-weight: 600; color: #033f63;">{count}</span>
+            </div>
+            """, unsafe_allow_html=True)
+    elif upcoming_pickups == 0:
+        st.markdown("""
+        <div style="color: #28666e; font-size: 0.9rem; opacity: 0.7; text-align: center; margin-top: 1rem;">
+            No pickups scheduled this week
+        </div>
+        """, unsafe_allow_html=True)
+
 # Chart functions removed per user request - keeping space for cleaner layout
 
 def style_old_orders(df: pd.DataFrame) -> pd.DataFrame:
@@ -360,6 +436,43 @@ def style_old_orders(df: pd.DataFrame) -> pd.DataFrame:
                 if days_old > 3:
                     return ['background-color: #fedc97; color: #d32f2f'] * len(row)
             except:
+                pass
+        
+        return [''] * len(row)
+    
+    # Apply the styling
+    styled_df = df.style.apply(highlight_old_rows, axis=1)
+    return styled_df
+
+
+def style_old_freightview(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply styling to highlight FreightView shipments with Last Update >8 days old."""
+    def highlight_old_rows(row):
+        """Highlight rows where Last Update is over 8 days old."""
+        if 'Last Update' in row and row['Last Update'] != 'N/A':
+            try:
+                # Parse the date - it could be a date object or string
+                last_update = row['Last Update']
+                
+                if isinstance(last_update, str) and last_update != 'N/A':
+                    # Try to parse string date
+                    from datetime import datetime as dt
+                    last_update_date = dt.strptime(last_update, '%Y-%m-%d').date()
+                elif hasattr(last_update, 'date'):
+                    # It's a datetime object
+                    last_update_date = last_update.date() if hasattr(last_update, 'date') else last_update
+                else:
+                    # It's already a date object
+                    last_update_date = last_update
+                
+                # Calculate age in days
+                from datetime import date
+                days_old = (date.today() - last_update_date).days
+                
+                # Apply yellow background with red text if over 8 days old
+                if days_old > 8:
+                    return ['background-color: #fedc97; color: #d32f2f'] * len(row)
+            except Exception:
                 pass
         
         return [''] * len(row)
@@ -399,11 +512,18 @@ def create_data_table(df: pd.DataFrame, title: str, service_type: str):
                 selected_carrier = 'All'
     
     with col2:
-        if "Status" in df.columns:
+        # Special handling for ShipStation Orders - filter by Store instead of Status
+        if "ShipStation Pending Orders" in title and "Store" in df.columns:
+            stores = ['All'] + sorted(df['Store'].dropna().unique().tolist())
+            selected_store = st.selectbox(f"Filter by Store", stores, key=f"store_{title}")
+            selected_status = 'All'  # Not used for ShipStation Orders
+        elif "Status" in df.columns:
             statuses = ['All'] + sorted(df['Status'].dropna().unique().tolist())
             selected_status = st.selectbox(f"Filter by Status", statuses, key=f"status_{title}")
+            selected_store = 'All'  # Not used for other tables
         else:
             selected_status = 'All'
+            selected_store = 'All'
     
     with col3:
         search_term = st.text_input(f"Search {title}", key=f"search_{title}")
@@ -416,7 +536,11 @@ def create_data_table(df: pd.DataFrame, title: str, service_type: str):
         if carrier_col in filtered_df.columns:
             filtered_df = filtered_df[filtered_df[carrier_col] == selected_carrier]
     
-    if selected_status != 'All' and 'Status' in filtered_df.columns:
+    # Apply store filter for ShipStation Orders, status filter for others
+    if "ShipStation Pending Orders" in title and 'Store' in filtered_df.columns:
+        if 'selected_store' in locals() and selected_store != 'All':
+            filtered_df = filtered_df[filtered_df['Store'] == selected_store]
+    elif selected_status != 'All' and 'Status' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Status'] == selected_status]
     
     if search_term:
@@ -434,12 +558,29 @@ def create_data_table(df: pd.DataFrame, title: str, service_type: str):
             styled_df = style_old_orders(display_df)
             
             # Format currency columns in the styled dataframe
+            format_dict = {}
             for col in display_df.columns:
                 if col != '_order_date_raw' and ('Cost' in col or 'Price' in col or 'Total' in col or 'Value' in col):
-                    styled_df = styled_df.format({col: lambda x: f"${x:,.2f}" if pd.notna(x) and x != 0 else "N/A"})
+                    format_dict[col] = lambda x: f"${x:,.2f}" if pd.notna(x) and x != 0 else "N/A"
+            
+            if format_dict:
+                styled_df = styled_df.format(format_dict)
             
             # Hide the raw date column from display
-            styled_df = styled_df.hide(axis='columns', subset=['_order_date_raw'])
+            if '_order_date_raw' in display_df.columns:
+                styled_df = styled_df.hide(axis='columns', subset=['_order_date_raw'])
+            
+            # Display the styled dataframe
+            st.dataframe(styled_df, use_container_width=True, height=400)
+        # Check if this is a FreightView table and apply row highlighting
+        elif ("FreightView Inbound" in title or "FreightView Outbound" in title) and 'Last Update' in display_df.columns:
+            # Apply styling for old FreightView shipments
+            styled_df = style_old_freightview(display_df)
+            
+            # Format currency columns in the styled dataframe
+            for col in display_df.columns:
+                if 'Cost' in col or 'Price' in col or 'Total' in col or 'Value' in col:
+                    styled_df = styled_df.format({col: lambda x: f"${x:,.2f}" if pd.notna(x) and x != 0 else "N/A"})
             
             # Display the styled dataframe
             st.dataframe(styled_df, use_container_width=True, height=400)
@@ -456,10 +597,13 @@ def create_data_table(df: pd.DataFrame, title: str, service_type: str):
             
             st.dataframe(display_df, use_container_width=True, height=400)
         
-        # Export button - use original filtered_df for export
+        # Export button - use original filtered_df for export (excluding internal columns)
         export_df = filtered_df.copy()
-        if '_order_date_raw' in export_df.columns:
-            export_df = export_df.drop('_order_date_raw', axis=1)
+        # Remove any internal columns from export
+        internal_cols = ['_order_date_raw']
+        for col in internal_cols:
+            if col in export_df.columns:
+                export_df = export_df.drop(col, axis=1)
         csv = export_df.to_csv(index=False)
         st.download_button(
             label=f"📥 Download {title} Data",
@@ -485,8 +629,12 @@ def main():
     
     # Get configuration and initialize service
     try:
-        fv_client_id, fv_client_secret, ss_api_key, ss_api_secret = get_config()
-        unified_service = UnifiedDataService(fv_client_id, fv_client_secret, ss_api_key, ss_api_secret)
+        fv_client_id, fv_client_secret, ss_api_key, ss_api_secret, at_api_key, at_base_id, at_table_name = get_config()
+        unified_service = UnifiedDataService(
+            fv_client_id, fv_client_secret, 
+            ss_api_key, ss_api_secret,
+            at_api_key, at_base_id, at_table_name
+        )
     except Exception as e:
         st.error(f"Service initialization error: {str(e)}")
         st.stop()
@@ -552,8 +700,8 @@ def main():
             st.session_state.summary["freightview"]["inbound_count"] = len(fv_inbound)
             st.session_state.summary["freightview"]["outbound_count"] = len(fv_outbound)
         
-        # Create two-column layout
-        col1, col2 = st.columns(2)
+        # Create three-column layout
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             create_freight_view_column(st.session_state.all_data, st.session_state.summary)
@@ -561,15 +709,48 @@ def main():
         with col2:
             create_shipstation_column(st.session_state.all_data, st.session_state.summary)
         
+        with col3:
+            if "airtable" in st.session_state.summary:
+                create_upcoming_pickups_column(st.session_state.all_data, st.session_state.summary)
+            else:
+                # Show placeholder if Airtable not configured
+                st.markdown("""
+                <div style="
+                    background: linear-gradient(to bottom right, #f5f7f3, #e8ede5);
+                    border: 1.5px solid #7c9885;
+                    border-left: 4px solid #7c9885;
+                    border-radius: 12px;
+                    padding: 1.2rem;
+                    height: 100%;
+                    box-shadow: 0 2px 8px rgba(124, 152, 133, 0.12);
+                ">
+                    <div style="display: flex; align-items: center; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #7c9885;">
+                        <span style="font-size: 1.5rem; margin-right: 0.5rem;">📅</span>
+                        <span style="font-size: 1.1rem; font-weight: 600; color: #033f63;">Upcoming Pickups</span>
+                        <span style="margin-left: auto; font-size: 0.9rem;">⚠️</span>
+                    </div>
+                    <div style="color: #28666e; font-size: 0.9rem; opacity: 0.7; text-align: center; margin-top: 1rem;">
+                        Airtable not configured
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        
         st.markdown("---")
         
         # Data tables in tabs
-        tab1, tab2, tab3, tab4 = st.tabs([
+        tab_names = [
             "🚛 FreightView Inbound", 
             "🚛 FreightView Outbound", 
             "📦 ShipStation Orders",
             "📤 ShipStation Shipments"
-        ])
+        ]
+        
+        # Add Airtable tab if configured
+        if "airtable" in st.session_state.summary and st.session_state.summary["airtable"]["status"] == "connected":
+            tab_names.append("📅 Upcoming Pickups")
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_names)
+        else:
+            tab1, tab2, tab3, tab4 = st.tabs(tab_names)
         
         # Process and display FreightView data
         if st.session_state.all_data["freightview"]["shipments"]:
@@ -589,7 +770,10 @@ def main():
         
         # Process and display ShipStation data
         if st.session_state.all_data["shipstation"]["orders"]:
-            ss_orders = unified_service.process_shipstation_orders(st.session_state.all_data["shipstation"]["orders"])
+            ss_orders = unified_service.process_shipstation_orders(
+                st.session_state.all_data["shipstation"]["orders"],
+                st.session_state.all_data["shipstation"]["stores"]
+            )
             
             with tab3:
                 create_data_table(pd.DataFrame(ss_orders), "ShipStation Pending Orders", "shipstation")
@@ -605,6 +789,25 @@ def main():
         else:
             with tab4:
                 st.error("❌ ShipStation shipments data unavailable")
+        
+        # Process and display Airtable data if available
+        if "airtable" in st.session_state.summary and st.session_state.summary["airtable"]["status"] == "connected":
+            if st.session_state.all_data["airtable"]["upcoming_pickups"]:
+                at_pickups = unified_service.process_airtable_pickups(st.session_state.all_data["airtable"]["upcoming_pickups"])
+                
+                with tab5:
+                    # Remove the raw date column before creating DataFrame
+                    display_pickups = []
+                    for pickup in at_pickups:
+                        display_pickup = pickup.copy()
+                        if '_ready_date_raw' in display_pickup:
+                            del display_pickup['_ready_date_raw']
+                        display_pickups.append(display_pickup)
+                    
+                    create_data_table(pd.DataFrame(display_pickups), "Upcoming Pickups This Week", "airtable")
+            else:
+                with tab5:
+                    st.info("📅 No upcoming pickups scheduled for this week")
     
     else:
         st.info("👆 Click 'Refresh All Data' to load shipping data from both services")
