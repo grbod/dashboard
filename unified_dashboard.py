@@ -396,24 +396,24 @@ def create_upcoming_pickups_column(data: dict, summary: dict):
             else:
                 color = "#28666e"  # Default ming
             
-            # Add more contrast for better visibility with semi-transparent backgrounds
+            # Style matching the auto-refresh card for Sent PO and Pickup Scheduled
             if status_name == 'Pickup Scheduled':
-                bg_color = "rgba(232, 245, 233, 0.7)"  # Light green at 70% opacity
-                text_color = "#1b5e20"  # Dark green text for strong contrast
-                count_color = "#2e7d32"  # Medium green for numbers
-                border_color = "#4caf50"  # Bright green border
+                bg_color = "rgba(50, 50, 50, 0.9)"  # Dark background like auto-refresh
+                text_color = "#4caf50"  # Green text for Pickup Scheduled
+                count_color = "#81c784"  # Light green for numbers
+                border_color = "rgba(76, 175, 80, 0.7)"  # Green border at 70% opacity
             elif status_name == 'Sent PO':
-                bg_color = "rgba(227, 242, 253, 0.7)"  # Light blue at 70% opacity
-                text_color = "#0d47a1"  # Dark blue text for strong contrast
-                count_color = "#1565c0"  # Medium blue for numbers
-                border_color = "#2196f3"  # Bright blue border
+                bg_color = "rgba(50, 50, 50, 0.9)"  # Dark background like auto-refresh
+                text_color = "#2196f3"  # Blue text for Sent PO
+                count_color = "#64b5f6"  # Light blue for numbers
+                border_color = "rgba(33, 150, 243, 0.7)"  # Blue border at 70% opacity
             elif status_name == 'PO Confirmed':
-                bg_color = "rgba(255, 249, 196, 0.7)"  # Light yellow at 70% opacity
+                bg_color = "rgba(255, 249, 196, 0.7)"  # Keep light yellow
                 text_color = "#f57f17"  # Dark amber text
                 count_color = "#ff6f00"  # Orange for numbers
                 border_color = "#ffc107"  # Amber border
             elif status_name == 'Ready for Pickup!':
-                bg_color = "rgba(243, 229, 245, 0.7)"  # Light purple at 70% opacity
+                bg_color = "rgba(243, 229, 245, 0.7)"  # Keep light purple
                 text_color = "#4a148c"  # Dark purple text
                 count_color = "#6a1b9a"  # Medium purple for numbers
                 border_color = "#9c27b0"  # Purple border
@@ -423,20 +423,28 @@ def create_upcoming_pickups_column(data: dict, summary: dict):
                 count_color = "#033f63"
                 border_color = color
             
+            # Determine border style based on card type
+            if 'rgba(50, 50, 50' in bg_color:
+                # Dark cards get colored border with opacity
+                border_style = f"1px solid {border_color}"
+            else:
+                # Light cards keep transparent border
+                border_style = "1px solid transparent"
+            
             st.markdown(f"""
             <div style="
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 0.4rem 0.6rem;
-                margin-bottom: 0.4rem;
+                padding: 0.5rem 0.75rem;
+                margin-bottom: 0.5rem;
                 background: {bg_color};
-                border-radius: 6px;
-                border-left: 4px solid {border_color};
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                border-radius: 8px;
+                border: {border_style};
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             ">
-                <span style="color: {text_color}; font-size: 0.9rem; font-weight: 600;">{status_name}:</span>
-                <span style="font-weight: 700; color: {count_color}; font-size: 1rem;">{count}</span>
+                <span style="color: {text_color}; font-size: 0.9rem; font-weight: 500;">{status_name}:</span>
+                <span style="font-weight: 600; color: {count_color}; font-size: 1.1rem;">{count}</span>
             </div>
             """, unsafe_allow_html=True)
     elif upcoming_pickups == 0:
