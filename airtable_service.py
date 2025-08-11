@@ -35,15 +35,24 @@ class AirtableService:
             self.table = None
     
     def get_two_week_range(self) -> tuple:
-        """Get the start and end dates for current week and previous week (2 weeks total)."""
+        """Get the start and end dates for current week and previous week (2 weeks total).
+        Treats Sunday as the start of the week."""
         today = datetime.now().date()
-        # Find Monday of this week
-        monday_this_week = today - timedelta(days=today.weekday())
-        # Find Monday of previous week
-        monday_last_week = monday_this_week - timedelta(days=7)
-        # Find Sunday of this week
-        sunday_this_week = monday_this_week + timedelta(days=6)
-        return monday_last_week, sunday_this_week
+        
+        # Calculate days since Sunday (Sunday = 0, Monday = 1, ... Saturday = 6)
+        # Python's weekday() returns Monday = 0, so we adjust
+        days_since_sunday = (today.weekday() + 1) % 7
+        
+        # Find Sunday of this week (start of current week)
+        sunday_this_week = today - timedelta(days=days_since_sunday)
+        
+        # Find Sunday of previous week (start of previous week) 
+        sunday_last_week = sunday_this_week - timedelta(days=7)
+        
+        # Find Saturday of this week (end of current week)
+        saturday_this_week = sunday_this_week + timedelta(days=6)
+        
+        return sunday_last_week, saturday_this_week
     
     @st.cache_data(ttl=900)  # Cache for 15 minutes
     def fetch_upcoming_pickups(_self) -> Optional[List[Dict]]:

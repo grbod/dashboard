@@ -331,6 +331,10 @@ def create_shipstation_column(data: dict, summary: dict):
                             <div class="store-count">{count}</div>
                         </div>
                         """, unsafe_allow_html=True)
+            
+            # Add spacing between rows (except after the last row)
+            if i + 3 < num_stores_to_show:
+                st.markdown("<div style='margin-bottom: 0.75rem;'></div>", unsafe_allow_html=True)
         
         # Show remaining stores count if there are more
         if len(sorted_stores) > num_stores_to_show:
@@ -400,18 +404,18 @@ def create_upcoming_pickups_column(data: dict, summary: dict):
             if status_name == 'Pickup Scheduled':
                 bg_color = "rgba(50, 50, 50, 0.9)"  # Dark background like auto-refresh
                 text_color = "#4caf50"  # Green text for Pickup Scheduled
-                count_color = "#81c784"  # Light green for numbers
+                count_color = "#4caf50"  # Same green for numbers
                 border_color = "rgba(76, 175, 80, 0.7)"  # Green border at 70% opacity
             elif status_name == 'Sent PO':
                 bg_color = "rgba(50, 50, 50, 0.9)"  # Dark background like auto-refresh
                 text_color = "#2196f3"  # Blue text for Sent PO
-                count_color = "#64b5f6"  # Light blue for numbers
+                count_color = "#2196f3"  # Same blue for numbers
                 border_color = "rgba(33, 150, 243, 0.7)"  # Blue border at 70% opacity
             elif status_name == 'PO Confirmed':
-                bg_color = "rgba(255, 249, 196, 0.7)"  # Keep light yellow
-                text_color = "#f57f17"  # Dark amber text
-                count_color = "#ff6f00"  # Orange for numbers
-                border_color = "#ffc107"  # Amber border
+                bg_color = "rgba(50, 50, 50, 0.9)"  # Dark background like others
+                text_color = "#ffa726"  # Amber/orange text for visibility
+                count_color = "#ffa726"  # Same amber/orange for numbers
+                border_color = "rgba(255, 167, 38, 0.7)"  # Amber border at 70% opacity
             elif status_name == 'Ready for Pickup!':
                 bg_color = "rgba(243, 229, 245, 0.7)"  # Keep light purple
                 text_color = "#4a148c"  # Dark purple text
