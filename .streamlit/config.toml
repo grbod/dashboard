@@ -1,0 +1,23 @@
+[server]
+port = 8502
+address = "127.0.0.1"
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 50
+
+[browser]
+gatherUsageStats = false
+serverAddress = "dash.bodytools.work"
+serverPort = 443
+
+[theme]
+base = "dark"
+primaryColor = "#033f63"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#262730"
+textColor = "#fafafa"
+font = "sans serif"
+
+[runner]
+fastReruns = false

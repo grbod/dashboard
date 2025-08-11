@@ -318,18 +318,7 @@ server {
     listen [::]:80;
     server_name ${DOMAIN};
 
-    # Redirect all HTTP to HTTPS
-    return 301 https://\$server_name\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name ${DOMAIN};
-
-    # SSL configuration will be added by certbot
-    # ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    # ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    # SSL configuration and HTTPS redirect will be added by certbot
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -389,13 +378,14 @@ EOF
 
 # Step 12: Test Nginx configuration before applying
 log_info "Testing Nginx configuration..."
-nginx -t
-if [ $? -ne 0 ]; then
+if ! nginx -t; then
     log_error "Nginx configuration test failed!"
     log_info "Reverting changes..."
     rm -f "${NGINX_SITE}"
     exit 1
 fi
+
+log_info "✅ Nginx configuration test passed!"
 
 # Step 13: Enable Nginx site
 log_info "Enabling Nginx site..."
@@ -431,11 +421,30 @@ if [[ $setup_ssl =~ ^[Yy]$ ]]; then
         apt-get install -y certbot python3-certbot-nginx
     fi
     
-    log_info "Setting up SSL certificate..."
-    certbot --nginx -d "${DOMAIN}" --non-interactive --agree-tos --email admin@bodytools.work --redirect
+    # First, make sure nginx is running with the HTTP-only config
+    log_info "Reloading nginx with HTTP-only configuration..."
+    systemctl reload nginx
     
-    # Restart nginx after SSL setup
-    systemctl restart nginx
+    # Wait a moment for nginx to reload
+    sleep 2
+    
+    log_info "Setting up SSL certificate with certbot..."
+    if certbot --nginx -d "${DOMAIN}" --non-interactive --agree-tos --email admin@bodytools.work --redirect; then
+        log_info "✅ SSL certificate successfully configured!"
+        
+        # Test nginx config after SSL setup
+        if nginx -t; then
+            log_info "✅ Nginx configuration valid after SSL setup"
+            systemctl reload nginx
+        else
+            log_error "Nginx configuration invalid after SSL setup!"
+            systemctl status nginx
+        fi
+    else
+        log_error "SSL certificate setup failed!"
+        log_warn "You can retry SSL setup later with:"
+        log_warn "sudo certbot --nginx -d ${DOMAIN}"
+    fi
 fi
 
 # Step 16: Final checks
