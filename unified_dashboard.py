@@ -356,8 +356,9 @@ def create_upcoming_pickups_column(data: dict, summary: dict):
     status = summary["airtable"]["status"]
     status_icon = "✅" if status == "connected" else "⚠️"
     
-    # Get pickup count
+    # Get pickup counts
     upcoming_pickups = summary["airtable"].get("upcoming_pickups", 0)
+    unique_pos = summary["airtable"].get("unique_pos", 0)
     
     # Get status breakdown
     by_status = summary["airtable"].get("by_status", {})
@@ -378,9 +379,13 @@ def create_upcoming_pickups_column(data: dict, summary: dict):
             <span style="margin-left: auto; font-size: 0.9rem;">{status_icon}</span>
         </div>
         <div style="padding-left: 0.5rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <span style="color: #28666e; font-weight: 500; font-size: 0.95rem;">Total to Schedule:</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                <span style="color: #28666e; font-weight: 500; font-size: 0.95rem;">Items Picking Up:</span>
                 <span style="font-weight: 700; color: #033f63; font-size: 2.2rem;">{upcoming_pickups}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <span style="color: #28666e; font-weight: 500; font-size: 0.95rem;">Orders Picking Up:</span>
+                <span style="font-weight: 700; color: #033f63; font-size: 2.2rem;">{unique_pos}</span>
             </div>
         </div>
     </div>

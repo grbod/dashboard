@@ -417,6 +417,7 @@ class UnifiedDataService:
             
             summary["airtable"] = {
                 "upcoming_pickups": pickups_summary.get("total_pickups", 0),
+                "unique_pos": pickups_summary.get("unique_pos", 0),
                 "total_pickup_value": pickups_summary.get("total_value", 0),
                 "by_status": pickups_summary.get("by_status", {}),
                 "status": "connected"

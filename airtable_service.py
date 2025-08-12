@@ -143,6 +143,7 @@ class AirtableService:
         if not records:
             return {
                 'total_pickups': 0,
+                'unique_pos': 0,
                 'by_status': {},
                 'total_value': 0,
                 'earliest_pickup': None,
@@ -151,6 +152,7 @@ class AirtableService:
         
         summary = {
             'total_pickups': len(records),
+            'unique_pos': 0,
             'by_status': {},
             'total_value': 0,
             'earliest_pickup': None,
@@ -158,6 +160,7 @@ class AirtableService:
         }
         
         dates = []
+        unique_po_set = set()
         
         for record in records:
             fields = record.get('fields', {})
@@ -165,6 +168,12 @@ class AirtableService:
             # Count by status
             status = fields.get('Status', 'Unknown')
             summary['by_status'][status] = summary['by_status'].get(status, 0) + 1
+            
+            # Track unique POs
+            po = fields.get('Notes/PO', '')
+            # Count any non-empty PO value (including 'CS')
+            if po and po.strip():
+                unique_po_set.add(po.strip())
             
             # Sum total value
             total_cost = fields.get('Total Cost', fields.get('Total', 0))
@@ -175,6 +184,9 @@ class AirtableService:
             ready_date = fields.get('Vendor Ready-Date')
             if ready_date:
                 dates.append(ready_date)
+        
+        # Set the unique POs count
+        summary['unique_pos'] = len(unique_po_set)
         
         # Find earliest and latest dates
         if dates:
